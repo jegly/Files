@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  This app has no INTERNET permission, so nothing here should ever be consulted. It exists as
+  the second half of a belt-and-braces argument, and because android:usesCleartextTraffic is on
+  a deprecation path in Android 17 — network security config is its stated replacement.
+
+  cleartextTrafficPermitted="false" blocks plaintext HTTP.
+
+  The empty <trust-anchors/> is the deliberate part: it declares that this app trusts no
+  certificate authority at all, system or user. If a dependency's merged manifest ever did
+  smuggle in an INTERNET permission, every TLS handshake would still fail with no trusted
+  issuer, and plaintext is already denied above. The result is that "no network" stops being a
+  property we assert and becomes one the platform enforces.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors />
+    </base-config>
+</network-security-config>

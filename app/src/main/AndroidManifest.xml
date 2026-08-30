@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      Deliberately absent:
+        REQUEST_INSTALL_PACKAGES - tapping an APK will not silently launch an installer.
+        QUERY_ALL_PACKAGES       - we resolve openers via the system chooser instead.
+
+      Network permissions are not merely omitted, they are actively removed below. Simply not
+      declaring INTERNET is a weaker guarantee than it looks: the manifest merger unions in the
+      permissions of every dependency, so one library that declares INTERNET silently grants
+      this whole process network capability. tools:node="remove" makes the merge fail-safe —
+      the permission cannot come back without someone editing this file on purpose.
+
+      ACCESS_LOCAL_NETWORK is new in Android 17 and gates LAN discovery specifically; it is
+      removed here for the same reason, so no dependency can add SMB/mDNS-style reachability.
+
+      EXPECTED BUILD WARNINGS — these four lines each produce:
+        "tagged at AndroidManifest.xml:NN to remove other declarations but no other
+         declaration present"
+      That is the guard reporting success: nothing in the dependency graph declares these, so
+      there was nothing to strip. Note the inversion — the warning DISAPPEARING would mean some
+      dependency has started asking for network access and is now being stripped. Manifest-merger
+      warnings have no per-node suppression, so the noise is the price of the guarantee.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" tools:node="remove" />
+
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!--
+      Required by the app lock. Easy to miss: androidx.biometric declares this in its own
+      manifest and the merger folds it in, so an app using that library never has to. This app
+      talks to the platform android.hardware.biometrics.BiometricPrompt directly instead, and
+      there is no library manifest to inherit from — without this line every BiometricManager
+      call throws SecurityException.
+
+      Normal protection level, so declaring it is sufficient; there is no runtime request.
+    -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <application
+        android:name=".FilesApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:memtagMode="async"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:theme="@style/Theme.Files">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Files">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_FILES" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Picker face for other apps. GET_CONTENT is the only pick intent a third-party activity
+          may claim; OPEN_DOCUMENT / CREATE_DOCUMENT / OPEN_DOCUMENT_TREE are routed by the
+          system to DocumentsUI and are not resolvable here.
+
+          excludeFromRecents + noHistory: a picker is someone else's modal step, so it must not
+          linger in the recents list holding a view of the user's storage after it returns.
+        -->
+        <activity
+            android:name=".PickActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Files">
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Destination picker for Copy to… / Move to…, deliberately NOT exported.
+
+          It accepts absolute source paths in its Intent and then transfers them using this app's
+          MANAGE_EXTERNAL_STORAGE. Exporting it — or hosting the flow on the exported PickActivity
+          — would let any app start it with an explicit ComponentName (intent filters do not gate
+          explicit intents) and have this app move files it has no permission to read. Unexported
+          means the platform blocks that outright.
+        -->
+        <activity
+            android:name=".DestinationActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Files" />
+
+        <service
+            android:name=".ops.FileOperationService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/provider_paths" />
+        </provider>
+    </application>
+</manifest>

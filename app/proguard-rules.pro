@@ -1,0 +1,3 @@
+-dontwarn org.jetbrains.annotations.**
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

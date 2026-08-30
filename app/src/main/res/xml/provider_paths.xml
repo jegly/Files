@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Scoped to mounted storage volumes, deliberately.
+
+  This previously declared <root-path path="/">, which let FileProvider mint a content:// URI
+  for any path this process can read — including /data/data/com.jegly.files (our own
+  SharedPreferences and the lock blob), /proc, and /system. Nothing in the app asks for those
+  today, but the whole point of a FileProvider path config is to bound what is reachable if
+  something ever does: an intent-redirection bug anywhere in the share or pick paths would
+  otherwise be an arbitrary-file-read primitive handed to whichever app received the URI.
+
+  /storage/ covers every volume StorageManager can hand us — /storage/emulated/0 for primary,
+  /storage/XXXX-XXXX for SD cards and USB drives — which is exactly the set a file manager
+  needs to share from, and nothing else.
+
+  Scoping to /storage/ alone, however, silently broke the one thing in the app that shares a
+  file from outside it. Tapping a file inside an archive unpacks it to cacheDir/archive-preview
+  and hands it to a viewer, and getUriForFile threw IllegalArgumentException ("Failed to find
+  configured root") for every such file, because no declared root contained it. The cache-path
+  below is narrowed to that one subdirectory rather than all of cacheDir, so the bound stays as
+  tight as the argument above asks for: the only cache contents reachable are files this app
+  extracted for the user to open, which is exactly the set that needs to be.
+-->
+<paths>
+    <external-path name="external" path="." />
+    <root-path name="volumes" path="/storage/" />
+    <cache-path name="archive-preview" path="archive-preview/" />
+    <!--
+      Vault files decrypted for a viewer. Same narrow scoping as above, and the same unavoidable
+      compromise: handing a file to another app means handing it something readable, so a vault's
+      contents exist in plaintext here for as long as they are open. Both buckets are dropped on
+      onLowMemory and can be cleared at any time.
+    -->
+    <cache-path name="vault-preview" path="vault-preview/" />
+</paths>

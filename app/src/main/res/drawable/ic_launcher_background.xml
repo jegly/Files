@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Flat aqua ground, taken from the teal disc in the reference artwork.
+
+  The reference draws that teal as a circle floating on white, but a circle is the wrong shape to
+  ship here: the launcher applies its own mask, so a square mask would expose white corners and a
+  circular one would double up on the same edge. Filling the whole 108dp with the teal lets every
+  mask cut its own silhouette out of it.
+
+  The cabinet is white and dark-outlined, so this needs to stay a mid-tone — light enough for the
+  outlines to read, saturated enough for the white body to separate from it.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:pathData="M0,0 L108,0 L108,108 L0,108 Z"
+        android:fillColor="#FF6FC2C6" />
+</vector>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- minSdk 37 is far past API 26, so plain mipmap-anydpi is enough; no -v26 qualifier and no
+     legacy PNG density buckets are needed, because every device that can install this app
+     renders adaptive icons.
+
+     monochrome deliberately points at its own drawable rather than reusing the foreground: the
+     foreground is a full-colour cabinet with white and grey faces and six coloured file tabs, all
+     of which flatten into one tone once the system tints it. The monochrome drawable redraws the
+     same cabinet as a wireframe so it survives that. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>

@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Filing cabinet in three-quarter view, redrawn from the reference sketch.
+
+  This replaces the flat front-on cabinet that used to live here. The reference reads better at a
+  glance because the open drawers and the file tabs give the mark some depth and one spot of
+  colour, which a plain stroked rectangle does not.
+
+  Projection: a single depth vector of (12,-8) — back and up-right — used for every receding edge,
+  so the top face, the right face and both drawer boxes stay on one consistent axis. The drawers
+  are pulled out along the negative of that vector, the top one by half its depth and the lower one
+  by 0.3, which is why their panels sit down-left of their openings by (6,-4) and (3.6,-2.4). Each
+  drawer plugs its opening exactly, so no dark recess needs drawing behind them.
+
+  Geometry is bounded by the 66dp guaranteed-visible circle (r 33 from centre 54,54). The furthest
+  points are the back-top-right corner at r 29.8 and the front-bottom-left at r 29.2; plus half of
+  the 2.4 stroke that is r 31, clear of the limit, so no launcher mask can clip the cabinet.
+
+  The reference had green paint scribbled across the lower drawer and a stray grey band running off
+  the right edge. Both were artefacts of the source image, not design, and are simply absent here.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Cabinet body. Three faces, each carrying its own outline: together they draw the whole
+         wireframe, so no separate stroke-only paths are needed. Back to front. -->
+    <path
+        android:pathData="M61,39 L73,31 L73,71 L61,79 Z"
+        android:fillColor="#FFB9BEC6"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M39,39 L51,31 L73,31 L61,39 Z"
+        android:fillColor="#FFE4E7EA"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M39,39 L61,39 L61,79 L39,79 Z"
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round" />
+
+    <!-- Lower drawer, pulled out 0.3 of its depth and empty. Drawn before the upper drawer because
+         it sits further back. -->
+    <path
+        android:pathData="M35.4,62.4 L39,60 L61,60 L57.4,62.4 Z"
+        android:fillColor="#FF2B313A"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M57.4,62.4 L61,60 L61,73 L57.4,75.4 Z"
+        android:fillColor="#FFB9BEC6"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M35.4,62.4 L57.4,62.4 L57.4,75.4 L35.4,75.4 Z"
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
+
+    <!-- Upper drawer, half open. Mouth first, then the files standing in it, then the near walls. -->
+    <path
+        android:pathData="M33,47 L39,43 L61,43 L55,47 Z"
+        android:fillColor="#FF2B313A"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
+
+    <!-- Files, side by side across the drawer. Each is a vertical sheet seen edge-on: its front
+         edge rests on the near rim at y 47 and its back edge on the far rim at y 43, so the whole
+         run of six lands inside the mouth. Tops stop at y 39, level with the cabinet's front lip,
+         rather than poking above it. Left to right, each overlapping the last by 2.8. -->
+    <path
+        android:pathData="M34,47 L40,43 L40,39 L34,43 Z"
+        android:fillColor="#FF2F3E46"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="1"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M37.2,47 L43.2,43 L43.2,39 L37.2,43 Z"
+        android:fillColor="#FF2E7D5B"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="1"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M40.4,47 L46.4,43 L46.4,39 L40.4,43 Z"
+        android:fillColor="#FF2F6FB5"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="1"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M43.6,47 L49.6,43 L49.6,39 L43.6,43 Z"
+        android:fillColor="#FF7EC8E3"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="1"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M46.8,47 L52.8,43 L52.8,39 L46.8,43 Z"
+        android:fillColor="#FFE8542F"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="1"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M50,47 L56,43 L56,39 L50,43 Z"
+        android:fillColor="#FFF0B429"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="1"
+        android:strokeLineJoin="round" />
+
+    <path
+        android:pathData="M55,47 L61,43 L61,56 L55,60 Z"
+        android:fillColor="#FFB9BEC6"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M33,47 L55,47 L55,60 L33,60 Z"
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
+
+    <!-- Label holder on each drawer front: white plate, red card. The red is the only warm accent
+         besides the file tabs and is what stops the two panels reading as blank slabs. -->
+    <path
+        android:pathData="M36,50 L48,50 L48,57 L36,57 Z"
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="1.6"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M37.6,52.2 L46.4,52.2 L46.4,54.8 L37.6,54.8 Z"
+        android:fillColor="#FFDF3B23" />
+    <path
+        android:pathData="M38.4,65.4 L50.4,65.4 L50.4,72.4 L38.4,72.4 Z"
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FF1B1F26"
+        android:strokeWidth="1.6"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M40,67.6 L48.8,67.6 L48.8,70.2 L40,70.2 Z"
+        android:fillColor="#FFDF3B23" />
+</vector>

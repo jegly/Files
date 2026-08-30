@@ -1,0 +1,46 @@
+# Build output
+build/
+app/build/
+.gradle/
+
+# Local SDK paths and machine-specific settings — never committed; each checkout
+# generates its own, and a stale one breaks builds on other machines.
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.cxx/
+captures/
+
+# Keystores and signing material. The release key must never enter version control:
+# anyone holding it can publish an update that Android accepts as genuinely yours.
+*.jks
+*.keystore
+keystore.properties
+
+# Internal handoff notes. These track what has and hasn't been run on real hardware, what is
+# still unproven, and what was tried and abandoned — useful while working, not what the project
+# should say for itself in public.
+HANDOFF.md
+notes_excluded_from_push.md
+
+# OS noise
+.DS_Store
+Thumbs.db
+# GNOME's default screenshot filename. These get dropped here while checking a UI change
+# against a device or a mockup and are never worth keeping once the change lands.
+Screenshot From *.png
+
+# Scratch space for things generated while working on the app rather than shipped in it —
+# the launcher-icon preview page is rendered from the res/ drawables on demand, so committing
+# it would just be a second copy of the icon that can silently fall out of date with the
+# drawables it was rendered from.
+.cache/
+
+# Unrelated to this app — a Linux filesystem-hardening script and its output, which happen to
+# live in this directory. The report enumerates weak/world-writable paths on the machine that
+# generated it, so it is specifically the sort of thing not to publish. Both stay on disk;
+# they are simply not this project's to track.
+harden-fs.sh
+hardening-report.html

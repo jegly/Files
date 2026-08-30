@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Theme.Material, not Theme.Material.DayNight — the DayNight family is an AppCompat-library
+      construct and this app has no AppCompat dependency; the platform's own Theme.Material has
+      no DayNight variant. That's fine here: FilesTheme (Theme.kt) already resolves every actual
+      colour dynamically in Compose, and drives isAppearanceLightStatusBars/NavigationBars itself
+      from the resolved scheme's luminance. This XML theme's only real job is NoActionBar (so
+      Compose owns all chrome) and the transparent system bars edge-to-edge needs; the
+      windowLightStatusBar value below is just the pre-Compose-frame default before that
+      SideEffect runs, not a source of truth.
+    -->
+    <style name="Theme.Files" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>
