@@ -11,17 +11,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.GridView
@@ -35,7 +38,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Scaffold
@@ -62,10 +64,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jegly.files.data.AppSettings
 import com.jegly.files.data.StorageVolumes
 import com.jegly.files.model.FileEntry
 import com.jegly.files.model.PickRequest
 import com.jegly.files.model.ViewMode
+import com.jegly.files.ops.OpKind
 import com.jegly.files.ops.OpProgress
 import com.jegly.files.ops.Opener
 import com.jegly.files.security.AdvancedProtectionGate
@@ -114,6 +118,8 @@ fun BrowserScreen(
     val vaultPrompt by vm.vaultPrompt.collectAsStateWithLifecycle()
     val protection = remember { AdvancedProtectionGate.get(context) }
     val advancedProtection by protection.enabled.collectAsStateWithLifecycle()
+    val settings = remember { AppSettings.get(context) }
+    val itemScale by settings.itemScale.collectAsStateWithLifecycle()
 
     var searchOpen by remember { mutableStateOf(false) }
     var showSort by remember { mutableStateOf(false) }
@@ -161,17 +167,46 @@ fun BrowserScreen(
     // roots list itself is read by AppRoot for the drawer — this just keeps it fresh.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, context) {
+        /*
+         * Vaults close when the app leaves the foreground — but "this screen stopped" is not
+         * that. Copy to… opens a second Activity of this same app, which stops this one, and
+         * locking there closed the vault the user had just unlocked mid-copy. So report starts
+         * and stops and let VaultSession decide: it locks once nothing is started, after the
+         * timeout from Settings, and a hand-off between our own screens never reaches zero.
+         *
+         * `counted` keeps the pair balanced. Adding an observer to an already-started lifecycle
+         * replays ON_START immediately, and leaving the composition never delivers the matching
+         * ON_STOP, so an unguarded pair would drift the count upward and vaults would then stay
+         * open forever.
+         */
+        var counted = false
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) vm.refreshRoots()
-            // Every vault closes when the app leaves the foreground, on the same signal the
-            // biometric app lock re-arms on. A vault that stayed open while you were in other
-            // apps would be a lock that only ever challenged you once.
-            if (event == Lifecycle.Event.ON_STOP) VaultSession.lockAll()
+            when (event) {
+                Lifecycle.Event.ON_START -> if (!counted) {
+                    counted = true
+                    VaultSession.noteForeground()
+                }
+
+                Lifecycle.Event.ON_RESUME -> vm.refreshRoots()
+
+                Lifecycle.Event.ON_STOP -> if (counted) {
+                    counted = false
+                    // Read now, not captured: the user may have changed it since this screen
+                    // was composed.
+                    VaultSession.noteBackground(settings.vaultLockTimeoutMs)
+                }
+
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         val volumes = StorageVolumes.observe(context) { vm.refreshRoots() }
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            if (counted) {
+                counted = false
+                VaultSession.noteBackground(settings.vaultLockTimeoutMs)
+            }
             volumes?.close()
         }
     }
@@ -350,6 +385,19 @@ fun BrowserScreen(
                                     text = { Text("Deselect all") },
                                     onClick = { overflowOpen = false; vm.clearSelection() },
                                 )
+                                // Clipboard copy/cut, alongside the direct "Copy to…" pair
+                                // rather than instead of it: transferring somewhere you can
+                                // navigate to right now is one gesture, but pulling a file out
+                                // of a folder you then have to go and find is two, and until
+                                // now the second half had no way to be expressed.
+                                DropdownMenuItem(
+                                    text = { Text("Copy") },
+                                    onClick = { overflowOpen = false; vm.copy() },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Cut") },
+                                    onClick = { overflowOpen = false; vm.cut() },
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Copy to…") },
                                     onClick = {
@@ -483,9 +531,12 @@ fun BrowserScreen(
                                             onClick = { overflowOpen = false; newVault = true },
                                         )
                                     }
-                                    if (state.clipboard != null) {
+                                    // The count is the whole point: a clipboard staged three
+                                    // folders ago is invisible otherwise, and "Paste" alone
+                                    // gives no way to tell it still holds what you think.
+                                    state.clipboard?.let { clip ->
                                         DropdownMenuItem(
-                                            text = { Text("Paste") },
+                                            text = { Text("Paste (${clip.sources.size})") },
                                             onClick = { overflowOpen = false; vm.paste() },
                                         )
                                     }
@@ -561,13 +612,24 @@ fun BrowserScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                displayName(state.currentDir),
+                                state.vault?.displayName ?: displayName(state.currentDir),
                                 style = MaterialTheme.typography.bodyLarge,
                                 maxLines = 1,
                                 overflow = TextOverflow.MiddleEllipsis,
                             )
                         }
-                        Button(onClick = { onDestinationChosen(state.currentDir) }) {
+                        Button(
+                            /*
+                             * The vault's encrypted directory, not the folder the vault sits in.
+                             * currentDir stays pointed at the containing folder for as long as a
+                             * vault is open — that is what makes leaving one a single field
+                             * clear — so confirming here handed the transfer the folder *around*
+                             * the vault. Everything worked: the copy ran, reported success, and
+                             * dropped the files in plaintext next to the vault the user had just
+                             * unlocked and typed a password into.
+                             */
+                            onClick = { onDestinationChosen(state.vault?.dir ?: state.currentDir) },
+                        ) {
                             Text(if (pick.isMove) "Move here" else "Copy here")
                         }
                     }
@@ -658,9 +720,12 @@ fun BrowserScreen(
                     else "No items"
                 )
 
+                // No gap between rows and none above the first: a file list is a list, and the
+                // 2dp of air that used to sit between every row read as an unfinished card
+                // stack. Density is the user's call now — `scale` drives row height, icon and
+                // text together so the whole row grows or shrinks as one piece.
                 state.viewMode == ViewMode.List -> LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
                 ) {
                     items(visible, key = FileEntry::path) { entry ->
                         FileRow(
@@ -668,6 +733,7 @@ fun BrowserScreen(
                             selected = entry.path in state.selection,
                             selectionMode = state.inSelectionMode,
                             thumbnails = !state.inSyntheticTree,
+                            scale = itemScale,
                             onClick = { onEntryClick(entry) },
                             onLongClick = { onEntryLongClick(entry) },
                         )
@@ -681,8 +747,11 @@ fun BrowserScreen(
                 // pitch. That's architecturally the same thing Adaptive already computes — it
                 // renders as 2 columns on a phone the same way AOSP's does, but grows on a
                 // tablet the same way AOSP's does too, instead of being stuck at 2 forever.
+                // Scaling the cell pitch rather than a column count keeps that formula intact:
+                // a smaller scale fits more columns on the same screen, which is what asking for
+                // a smaller grid means.
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(164.dp),
+                    columns = GridCells.Adaptive(164.dp * itemScale),
                     contentPadding = PaddingValues(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -692,6 +761,7 @@ fun BrowserScreen(
                             entry = entry,
                             selected = entry.path in state.selection,
                             thumbnails = !state.inSyntheticTree,
+                            scale = itemScale,
                             onClick = { onEntryClick(entry) },
                             onLongClick = { onEntryLongClick(entry) },
                         )
@@ -863,6 +933,15 @@ private fun Breadcrumbs(
     }
 }
 
+/**
+ * One compact card, in the same place whether an operation is running or has just ended.
+ *
+ * The old shape put loose text and a full-width bar straight onto the background between the
+ * breadcrumbs and the list, so a finished copy left the words "1 done" floating mid-screen with
+ * nothing around them — it read like a rendering fault rather than a result. A spinner carries
+ * "working" on its own without a bar the width of the window, and a card gives the summary an
+ * edge to sit inside for the second and a half it is up.
+ */
 @Composable
 private fun OperationBanner(
     progress: OpProgress?,
@@ -870,65 +949,139 @@ private fun OperationBanner(
     onDismiss: () -> Unit,
 ) {
     AnimatedVisibility(visible = progress != null) {
-        when (val p = progress) {
-            is OpProgress.Running -> Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "${p.kind} ${p.currentName} — ${p.filesDone}/${p.filesTotal}",
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.MiddleEllipsis,
-                    )
-                    LinearProgressIndicator(
-                        progress = { p.fraction },
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    )
-                }
-                IconButton(onClick = onCancel) {
-                    Icon(Icons.Rounded.Cancel, contentDescription = "Cancel operation")
-                }
-            }
-
-            is OpProgress.Finished -> {
-                // A clean run clears itself — AOSP doesn't make you dismiss anything for a
-                // routine successful copy either, it just shows the notification and moves on.
-                // Only a run with something worth reading (a failure) waits for a manual tap;
-                // silently auto-clearing that would hide the one thing the user might need to
-                // act on.
-                val clean = p.failures.isEmpty()
-                LaunchedEffect(p) {
-                    if (clean) {
-                        delay(2500)
-                        onDismiss()
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            tonalElevation = 2.dp,
+        ) {
+            when (val p = progress) {
+                is OpProgress.Running -> Row(
+                    modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+                        // Determinate only once the plan has measured something. A ring pinned
+                        // at zero while a large folder is being counted looks stalled, whereas
+                        // an indeterminate one is honestly saying "started, size unknown".
+                        if (p.bytesTotal > 0L) {
+                            CircularProgressIndicator(
+                                progress = { p.fraction },
+                                modifier = Modifier.fillMaxSize(),
+                                strokeWidth = 2.5.dp,
+                            )
+                        } else {
+                            CircularProgressIndicator(
+                                modifier = Modifier.fillMaxSize(),
+                                strokeWidth = 2.5.dp,
+                            )
+                        }
                     }
-                }
-                Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
-                    val summary = buildString {
-                        if (p.cancelled) append("Cancelled — ")
-                        append("${p.succeeded} done")
-                        if (p.skipped > 0) append(", ${p.skipped} skipped")
-                        if (p.failures.isNotEmpty()) append(", ${p.failures.size} failed")
-                    }
-                    Text(summary, style = MaterialTheme.typography.labelLarge)
-                    p.failures.take(3).forEach {
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            "${it.path}: ${it.reason}",
+                            "${p.kind.presentTense()} ${p.currentName}",
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.MiddleEllipsis,
+                        )
+                        Text(
+                            "${p.filesDone} of ${p.filesTotal}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (!clean) {
-                        SuggestionChip(onClick = onDismiss, label = { Text("Dismiss") })
+                    IconButton(onClick = onCancel) {
+                        Icon(Icons.Rounded.Cancel, contentDescription = "Cancel operation")
                     }
                 }
-            }
 
-            null -> Unit
+                is OpProgress.Finished -> {
+                    // A clean run clears itself — AOSP doesn't make you dismiss anything for a
+                    // routine successful copy either, it just shows the notification and moves
+                    // on. Only a run with something worth reading (a failure) waits for a manual
+                    // tap; silently auto-clearing that would hide the one thing the user might
+                    // need to act on.
+                    val clean = p.failures.isEmpty()
+                    LaunchedEffect(p) {
+                        if (clean) {
+                            delay(2000)
+                            onDismiss()
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.padding(
+                            start = 14.dp,
+                            end = if (clean) 14.dp else 8.dp,
+                            top = 10.dp,
+                            bottom = 10.dp,
+                        ),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(
+                            if (clean) Icons.Rounded.CheckCircle else Icons.Rounded.Cancel,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                            tint = if (clean) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error,
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                buildString {
+                                    if (p.cancelled) append("Cancelled — ")
+                                    // "Copied 3 items", not "3 done": the verb is the fact the
+                                    // user is checking for, and a bare count next to nothing was
+                                    // the least readable part of the old banner.
+                                    append(p.kind.pastTense())
+                                    append(" ${p.succeeded} ${plural(p.succeeded, "item")}")
+                                    if (p.skipped > 0) append(", ${p.skipped} skipped")
+                                    if (p.failures.isNotEmpty()) {
+                                        append(", ${p.failures.size} failed")
+                                    }
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            p.failures.take(3).forEach {
+                                Text(
+                                    "${it.path}: ${it.reason}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        if (!clean) {
+                            IconButton(onClick = onDismiss) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Dismiss")
+                            }
+                        }
+                    }
+                }
+
+                null -> Unit
+            }
         }
     }
+}
+
+private fun OpKind.presentTense(): String = when (this) {
+    OpKind.Copy -> "Copying"
+    OpKind.Move -> "Moving"
+    OpKind.Delete -> "Deleting"
+    OpKind.Compress -> "Compressing"
+    OpKind.Extract -> "Extracting"
+}
+
+private fun OpKind.pastTense(): String = when (this) {
+    OpKind.Copy -> "Copied"
+    OpKind.Move -> "Moved"
+    OpKind.Delete -> "Deleted"
+    OpKind.Compress -> "Compressed"
+    OpKind.Extract -> "Extracted"
 }
 
 @Composable

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
 import com.jegly.files.security.ArchiveCrypto
+import com.jegly.files.security.SecureErase
 import com.jegly.files.security.Vault
 import com.jegly.files.security.VaultSession
 import java.io.BufferedOutputStream
@@ -255,24 +256,12 @@ class FileOperations {
     // --- vaults -----------------------------------------------------------------
 
     /**
-     * The vault [file] lives inside, or null.
-     *
-     * A vault root itself returns itself, which callers treat as "not in a vault": copying a whole
-     * vault folder is an ordinary directory copy of its ciphertext, and must stay one — decrypting
-     * and re-encrypting it would be slower, would need the password, and would silently change the
-     * bytes the user asked to duplicate.
+     * The vault [file] is *inside*, or null — the vault root itself counts as outside, so copying
+     * a whole vault folder stays an ordinary directory copy of its ciphertext. See
+     * [Vault.isInsideVault], which the UI shares for the same distinction.
      */
-    private fun vaultRootOf(file: File): File? {
-        var cursor: File? = if (file.isDirectory) file else file.parentFile
-        while (cursor != null) {
-            if (File(cursor, Vault.HEADER_NAME).isFile) return cursor
-            cursor = cursor.parentFile
-        }
-        return null
-    }
-
     private fun insideVault(file: File): File? =
-        vaultRootOf(file)?.takeIf { it.absolutePath != file.absolutePath }
+        Vault.rootOf(file)?.takeIf { it.absolutePath != file.absolutePath }
 
     private fun touchesVault(source: File, destDir: File): Boolean =
         insideVault(source) != null || insideVault(destDir) != null || Vault.isVault(destDir)
@@ -297,9 +286,22 @@ class FileOperations {
         val fromVault = insideVault(source)
         val toVault = insideVault(destDir) ?: destDir.takeIf { Vault.isVault(it) }
 
+        /*
+         * A vault root is a destination the user can name — "copy into MyVault" — but it is not
+         * a directory the encrypted tree lives in: the tree starts one level down, beside the
+         * header. Handing the root itself to importTree wrote blobs and an index next to
+         * vault.jfvault, where nothing that lists the vault ever looks, so the files were
+         * encrypted correctly and then invisible.
+         */
+        val destTree = if (toVault != null && Vault.isVault(destDir)) {
+            Vault.treeRoot(destDir)
+        } else {
+            destDir
+        }
+
         when {
             fromVault == null && toVault != null ->
-                importTree(source, destDir, keyFor(toVault), policy, onProgress)
+                importTree(source, destTree, keyFor(toVault), policy, onProgress)
 
             fromVault != null && toVault == null ->
                 exportTree(source, destDir, keyFor(fromVault), policy, onProgress)
@@ -309,7 +311,7 @@ class FileOperations {
                 // option when the two vaults have different master keys, and re-encrypting under
                 // the destination's key is required even when they are the same vault.
                 relocateInVault(
-                    source, destDir, keyFor(fromVault), keyFor(toVault), policy, onProgress,
+                    source, destTree, keyFor(fromVault), keyFor(toVault), policy, onProgress,
                 )
 
             else -> throw IOException("Not a vault transfer")
@@ -779,10 +781,14 @@ class FileOperations {
             // A symlink to a directory falls here and is simply unlinked below, which is what
             // deleting the link should do — its target is somebody else's data.
             freed += f.length()
+            // Overwritten before it is unlinked — see [SecureErase]. A symlink never is: writing
+            // "through" one destroys the file it points at, which is not the file being deleted.
+            if (!f.isSymlink()) SecureErase.overwrite(f)
         }
         if (!f.delete() && f.exists()) throw IOException("Couldn't delete ${f.name}")
         return freed
     }
+
 
     private companion object {
         const val DEFAULT_BUFFER = 256 * 1024

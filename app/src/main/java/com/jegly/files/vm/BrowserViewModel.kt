@@ -782,8 +782,23 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     fun cut() { if (!blockedInArchive()) stageClipboard(OpKind.Move) }
     fun copy() { if (!blockedInArchive()) stageClipboard(OpKind.Copy) }
 
-    private fun stageClipboard(kind: OpKind) = _state.update {
-        it.copy(clipboard = Clipboard(kind, selectedFiles()), selection = emptySet())
+    /**
+     * Stages a clipboard and says so. Paste lives in the overflow menu, so without the
+     * acknowledgement a copy is a menu tap that visibly does nothing but drop the selection —
+     * indistinguishable from having mis-tapped.
+     */
+    private fun stageClipboard(kind: OpKind) {
+        val staged = selectedFiles()
+        if (staged.isEmpty()) return
+        val noun = if (staged.size == 1) "item" else "items"
+        val verb = if (kind == OpKind.Move) "Cut" else "Copied"
+        _state.update {
+            it.copy(
+                clipboard = Clipboard(kind, staged),
+                selection = emptySet(),
+                message = "$verb ${staged.size} $noun — paste from the menu",
+            )
+        }
     }
 
     /**
@@ -798,15 +813,33 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         val s = _state.value
         val clip = s.clipboard ?: return
         // Pinned here, and carried through the prompt, so the folder that gets written is the
-        // one whose contents were examined for collisions.
-        val destination = s.currentDir
+        // one whose contents were examined for collisions. Inside a vault that is the encrypted
+        // directory being browsed, not the folder the vault happens to sit in — FileOperations
+        // decides encrypt/decrypt/re-encrypt from the two ends of the transfer, so pointing it
+        // at the right end is the whole of what "paste into a vault" means here.
+        val destination = s.vault?.dir ?: s.currentDir
         viewModelScope.launch {
-            val conflicts = withContext(Dispatchers.IO) {
-                clip.sources.filter { File(destination, it.name).exists() }.map { it.name }
-            }
+            val conflicts = withContext(Dispatchers.IO) { collisions(clip.sources, destination) }
             if (conflicts.isEmpty()) startPaste(clip, destination, ConflictPolicy.KeepBoth)
             else _pastePrompt.value = PastePrompt(clip.kind, conflicts, destination)
         }
+    }
+
+    /**
+     * Names in [destination] that [sources] would land on top of.
+     *
+     * Empty whenever either end is a vault, and that is a decision rather than an oversight: a
+     * vault entry's real name lives in an encrypted index, so a File's name on either side is an
+     * opaque blob name that collides with nothing and matches nothing. Answering "no conflicts"
+     * sends the transfer down the KeepBoth path, where Vault.uniqueName does the deduplication
+     * with the names it can actually read. The cost is that Overwrite is not offered for a vault
+     * paste; the alternative was a dialog listing blob names nobody can recognise.
+     */
+    private fun collisions(sources: List<File>, destination: File): List<String> {
+        if (Vault.isInsideVault(destination) || sources.any { Vault.isInsideVault(it) }) {
+            return emptyList()
+        }
+        return sources.filter { File(destination, it.name).exists() }.map { it.name }
     }
 
     fun pasteWith(policy: ConflictPolicy) {

@@ -134,6 +134,31 @@ object Vault {
     /** True if [dir] is a vault root. Cheap: one existence check. */
     fun isVault(dir: File): Boolean = dir.isDirectory && File(dir, HEADER_NAME).isFile
 
+    /**
+     * The vault [file] lives in, or null. A vault root returns itself.
+     *
+     * Walks up rather than consulting any session state, so it answers the same for a path
+     * nothing has ever opened — a copy destination chosen in a picker, say.
+     */
+    fun rootOf(file: File): File? {
+        var cursor: File? = if (file.isDirectory) file else file.parentFile
+        while (cursor != null) {
+            if (File(cursor, HEADER_NAME).isFile) return cursor
+            cursor = cursor.parentFile
+        }
+        return null
+    }
+
+    /**
+     * True for anything *within* a vault's encrypted tree, false for the vault folder itself.
+     *
+     * The root is deliberately excluded: copying a whole vault folder is an ordinary directory
+     * copy of its ciphertext and must stay one, since decrypting and re-encrypting it would need
+     * the password and would silently change the bytes the user asked to duplicate.
+     */
+    fun isInsideVault(file: File): Boolean =
+        rootOf(file)?.let { it.absolutePath != file.absolutePath } ?: false
+
     // --- lifecycle --------------------------------------------------------------
 
     /**

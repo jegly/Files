@@ -44,3 +44,11 @@ Screenshot From *.png
 # they are simply not this project's to track.
 harden-fs.sh
 hardening-report.html
+
+# Release build outputs. Same reasoning as build/ above: these are generated from the
+# tracked sources, and a 9 MB APK committed per release would live in every future clone.
+# Ship built APKs as GitHub Release assets attached to the version tag instead.
+app/release/
+
+# Kotlin compiler daemon session files — regenerated on every build.
+.kotlin/

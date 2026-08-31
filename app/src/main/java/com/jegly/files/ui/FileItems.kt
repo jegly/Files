@@ -4,11 +4,14 @@ import android.text.format.DateUtils
 import android.text.format.Formatter
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,8 +28,6 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -46,11 +48,20 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jegly.files.data.Thumbnails
 import com.jegly.files.model.FileEntry
 import com.jegly.files.model.FileKind
 
+/**
+ * A list row, sized by [scale].
+ *
+ * Hand-built rather than a Material3 ListItem, because the one thing this row has to do is be
+ * dense and ListItem will not be: its two-line height is a hard 72dp minimum with fixed internal
+ * padding and no way to ask for less, which on a phone meant six files filled the screen. This
+ * is the same content — icon, name, one line of metadata — at a height the user controls.
+ */
 @Composable
 fun FileRow(
     entry: FileEntry,
@@ -60,38 +71,49 @@ fun FileRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    scale: Float = 1f,
 ) {
     val context = LocalContext.current
     // Compose's combinedClickable does not fire a haptic on long-press the way the platform's
     // own View long-press always has — without this, starting a selection is silent and the
     // whole gesture reads as unresponsive/broken rather than as "you just did something".
     val haptics = LocalHapticFeedback.current
-    ListItem(
+    val avatar = (36.dp * scale)
+    Row(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.secondaryContainer
+                else Color.Transparent
+            )
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onLongClick()
                 },
-            ),
-        colors = ListItemDefaults.colors(
-            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer
-            else MaterialTheme.colorScheme.surface,
-        ),
-        leadingContent = {
-            EntryAvatar(
-                entry = entry,
-                selected = selected,
-                selectionMode = selectionMode,
-                thumbnails = thumbnails,
             )
-        },
-        headlineContent = {
-            Text(entry.name, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
-        },
-        supportingContent = {
+            // Height comes from the content plus this padding rather than a fixed minimum, so
+            // scaling the text size in Settings moves the row with it instead of clipping.
+            .padding(horizontal = 10.dp, vertical = 6.dp * scale),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        EntryAvatar(
+            entry = entry,
+            selected = selected,
+            selectionMode = selectionMode,
+            thumbnails = thumbnails,
+            size = avatar,
+        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                entry.name,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.MiddleEllipsis,
+            )
             val meta = remember(entry) {
                 val when_ = DateUtils.getRelativeTimeSpanString(entry.lastModified)
                 if (entry.isDirectory) {
@@ -101,9 +123,15 @@ fun FileRow(
                     "${Formatter.formatShortFileSize(context, entry.size)} · $when_"
                 }
             }
-            Text(meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        },
-    )
+            Text(
+                meta,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 /**
@@ -120,6 +148,7 @@ fun FileGridCell(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    scale: Float = 1f,
 ) {
     val haptics = LocalHapticFeedback.current
     Surface(
@@ -140,11 +169,11 @@ fun FileGridCell(
         ),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp * scale),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(32.dp * scale), contentAlignment = Alignment.Center) {
                 val thumb = if (selected) null else rememberThumbnail(entry, thumbnails)
                 when {
                     selected -> Icon(
@@ -184,11 +213,12 @@ private fun EntryAvatar(
     selected: Boolean,
     selectionMode: Boolean,
     thumbnails: Boolean,
+    size: Dp,
 ) {
     // Plain icon, no circular chip behind it — AOSP's own rows don't put one there either,
     // and it was pure decoration this app invented rather than anything DocumentsUI does.
     // Selection still swaps the icon to a checkmark, just without a coloured backing shape.
-    Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
         val thumb = if (selected) null else rememberThumbnail(entry, thumbnails)
         when {
             selected -> Icon(

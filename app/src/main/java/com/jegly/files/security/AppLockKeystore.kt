@@ -12,7 +12,7 @@ import javax.crypto.spec.GCMParameterSpec
 /**
  * The crypto half of the app lock, ported from www's BiometricAuthManager but with the
  * Tink/EncryptedSharedPreferences layer dropped — this app stores no secrets of its own, so
- * the lock only needs to prove that a strong biometric was presented.
+ * the lock only needs to prove that a real authentication happened.
  *
  * The proof is structural rather than a boolean: the AES key lives in the AndroidKeyStore with
  * setUserAuthenticationRequired(true), so a Cipher initialised from it is unusable until
@@ -23,6 +23,10 @@ import javax.crypto.spec.GCMParameterSpec
  * setInvalidatedByBiometricEnrollment(true) means enrolling a new fingerprint destroys the key,
  * so an attacker who adds their own biometric to an unlocked device gets a lock that fails
  * closed rather than one that opens for them.
+ *
+ * The key accepts a strong biometric OR the device credential — see [createKey]. A lock that
+ * only a fingerprint could open was unusable on a device with no strong sensor, and refused the
+ * PIN or pattern that such a device is actually secured with.
  */
 object AppLockKeystore {
 
@@ -52,10 +56,23 @@ object AppLockKeystore {
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setKeySize(256)
             .setUserAuthenticationRequired(true)
-            // Timeout 0 = every single use needs its own auth event, which is what makes the
-            // CryptoObject meaningful. Spelled out rather than left to the default, and scoped
-            // to strong biometrics so a device-credential unlock can't stand in for a finger.
-            .setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+            /*
+             * Timeout 0 = every single use needs its own auth event, which is what makes the
+             * CryptoObject meaningful.
+             *
+             * BIOMETRIC_STRONG *or* DEVICE_CREDENTIAL. Biometrics-only was a needless exclusion:
+             * plenty of devices have no strong sensor at all, plenty of people don't enrol one,
+             * and the PIN, pattern or password is what those devices are secured with. Both
+             * authenticator classes can gate a Keystore key with a per-use auth event, so the
+             * structural property this lock rests on — the OS refusing to release the key
+             * without a real auth — is identical either way. What is still excluded is class-2
+             * (weak) biometrics, which cannot back a CryptoObject at all and would silently
+             * degrade the lock into a prompt that proves nothing.
+             */
+            .setUserAuthenticationParameters(
+                0,
+                KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL,
+            )
             .setInvalidatedByBiometricEnrollment(true)
             .apply { if (useStrongBox) setIsStrongBoxBacked(true) }
             .build()
@@ -101,7 +118,7 @@ object AppLockKeystore {
         }
     }
 
-    /** Called with the cipher returned by a successful biometric prompt. */
+    /** Called with the cipher returned by a successful prompt. */
     fun sealSentinel(cipher: Cipher): String {
         val ct = cipher.doFinal(SENTINEL.toByteArray())
         return Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + ":" +

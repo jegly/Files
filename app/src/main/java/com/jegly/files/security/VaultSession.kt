@@ -6,15 +6,25 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.util.Arrays
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 /**
  * Which vaults are open, and their master keys, for as long as the app is in the foreground.
  *
  * Memory only, deliberately. Persisting an unwrapped master key anywhere — even in Keystore —
  * would mean the vault is openable without the password by anything that can reach that store,
- * which is most of what the password was for. The cost is that leaving the app closes every
- * vault, and that is the intended trade: [lockAll] is wired to ON_STOP, matching the biometric
- * app lock, which re-arms on exactly the same signal for exactly the same reason.
+ * which is most of what the password was for.
+ *
+ * LEAVING THE APP CLOSES VAULTS, BUT NOT INSTANTLY, AND NOT PER SCREEN. This used to be
+ * [lockAll] wired straight to one screen's ON_STOP, which was wrong twice over. An Activity
+ * stopping is not the app being left: opening the destination picker behind "Copy to…" stops the
+ * browser Activity, so the vault the user had just unlocked was closed before the copy they
+ * started could write a single byte into it — which is why copying into a vault never worked.
+ * And "instantly" is not a policy the user got a say in. [noteForeground] / [noteBackground]
+ * count started screens instead, so a hand-off between this app's own Activities never counts as
+ * leaving, and the lock is deferred by the user's chosen timeout once the last one really stops.
  *
  * Keys are zeroed on the way out rather than dropped, so a heap dump taken after locking does not
  * hand over what the lock was supposed to close.
@@ -88,12 +98,83 @@ object VaultSession {
         _open.value = keys.keys.toSet()
     }
 
-    /** Closes everything. Called when the app leaves the foreground. */
+    /** Closes everything. */
     fun lockAll() {
         val snapshot = keys.keys.toList()
         snapshot.forEach { keys.remove(it)?.zero() }
         _open.value = keys.keys.toSet()
     }
+
+    // --- foreground tracking ----------------------------------------------------
+
+    /**
+     * A daemon thread so a pending auto-lock can never keep the process alive on its own, and a
+     * single one so locks are serialised with the bookkeeping that schedules them.
+     */
+    private val timer = Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "vault-autolock").apply { isDaemon = true }
+    }
+
+    private val gate = Any()
+    private var startedScreens = 0
+    private var pendingLock: ScheduledFuture<*>? = null
+
+    /**
+     * When the last screen stopped, and the timeout it stopped under.
+     *
+     * Checked again on the way back in because a scheduled task is not a guarantee: a process
+     * that was frozen or starved can be resumed with the timer's deadline long past and the task
+     * not yet run, and the vault must be closed by then rather than a moment later.
+     */
+    private var backgroundedAt = 0L
+    private var backgroundedTimeout = 0L
+
+    /** One of this app's screens started. */
+    fun noteForeground() {
+        synchronized(gate) {
+            startedScreens++
+            if (startedScreens > 1) return
+            pendingLock?.cancel(false)
+            pendingLock = null
+            val since = backgroundedAt
+            if (since != 0L &&
+                backgroundedTimeout >= 0L &&
+                elapsedRealtime() - since >= backgroundedTimeout
+            ) {
+                lockAll()
+            }
+            backgroundedAt = 0L
+        }
+    }
+
+    /**
+     * One of this app's screens stopped. Vaults close [timeoutMs] after the last one does;
+     * [com.jegly.files.data.AppSettings.VAULT_LOCK_NEVER] leaves them open for the process's life.
+     */
+    fun noteBackground(timeoutMs: Long) {
+        synchronized(gate) {
+            if (startedScreens == 0) return
+            startedScreens--
+            if (startedScreens > 0) return
+            backgroundedTimeout = timeoutMs
+            if (timeoutMs < 0L) { backgroundedAt = 0L; return }
+            backgroundedAt = elapsedRealtime()
+            if (timeoutMs == 0L) { lockAll(); return }
+            pendingLock?.cancel(false)
+            pendingLock = timer.schedule(
+                { synchronized(gate) { if (startedScreens == 0) lockAll() } },
+                timeoutMs,
+                TimeUnit.MILLISECONDS,
+            )
+        }
+    }
+
+    /**
+     * elapsedRealtime, not nanoTime or currentTimeMillis: it counts time spent in deep sleep,
+     * which nanoTime does not, and cannot be moved by the clock changing under us. A phone that
+     * sat asleep overnight has to come back with its vaults closed.
+     */
+    private fun elapsedRealtime(): Long = android.os.SystemClock.elapsedRealtime()
 
     private fun ByteArray.zero() = Arrays.fill(this, 0)
 }

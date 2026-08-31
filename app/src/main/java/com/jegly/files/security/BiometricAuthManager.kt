@@ -20,8 +20,13 @@ import javax.crypto.Cipher
  * any Activity, so MainActivity stays a plain ComponentActivity and the fragment dependency
  * disappears entirely.
  *
- * BIOMETRIC_STRONG only. Class 2 (weak) biometrics cannot back a Keystore CryptoObject, so
- * allowing them would mean the crypto lock silently degrades into a UI-only prompt.
+ * BIOMETRIC_STRONG or DEVICE_CREDENTIAL — a fingerprint, a face, or the device's own PIN,
+ * pattern or password. Both can gate a Keystore key with a per-use auth event, which is the
+ * property the lock actually rests on; restricting it to biometrics only meant a device with no
+ * strong sensor, or a user who has enrolled none, could not arm the lock at all.
+ *
+ * Class 2 (weak) biometrics stay excluded: they cannot back a Keystore CryptoObject, so allowing
+ * them would mean the crypto lock silently degrades into a UI-only prompt that proves nothing.
  */
 class BiometricAuthManager(private val context: Context) {
 
@@ -38,23 +43,27 @@ class BiometricAuthManager(private val context: Context) {
      */
     fun unavailableReason(): String? {
         val manager = context.getSystemService(BiometricManager::class.java)
-            ?: return "This device has no biometric hardware"
+            ?: return "This device can't authenticate you"
 
+        // Either class satisfies the lock, so ask about both at once: a device with no sensor
+        // but a PIN set answers SUCCESS here, and used to be told it was unsupported.
         val status = runCatching {
-            manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        }.getOrElse { return "Biometrics couldn't be checked on this device" }
+            manager.canAuthenticate(ALLOWED)
+        }.getOrElse { return "Authentication couldn't be checked on this device" }
 
         return when (status) {
             BiometricManager.BIOMETRIC_SUCCESS -> null
-            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE ->
-                "This device has no strong biometric sensor"
-            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE ->
-                "The biometric sensor is unavailable right now"
+            // With DEVICE_CREDENTIAL in the mask, NONE_ENROLLED means there is no screen lock
+            // either — so the fix is a screen lock, not a fingerprint.
             BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED ->
-                "Enroll a fingerprint or face in Settings first"
+                "Set a screen lock — PIN, pattern or password — in Android Settings first"
+            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE ->
+                "This device can't authenticate you"
+            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE ->
+                "Authentication is unavailable right now"
             BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED ->
-                "A security update is required before biometrics can be used"
-            else -> "Strong biometrics aren't available on this device"
+                "A security update is required before this can be used"
+            else -> "This device can't authenticate you"
         }
     }
 
@@ -79,8 +88,8 @@ class BiometricAuthManager(private val context: Context) {
     ): CancellationSignal {
         val executor = activity.mainExecutor
 
-        // The negative button listener and onAuthenticationError(ERROR_NEGATIVE_BUTTON) can both
-        // fire for a single dismissal. Callers here flip UI state, so delivery must be once-only.
+        // The cancellation listener and onAuthenticationError can both fire for a single
+        // dismissal. Callers here flip UI state, so delivery must be once-only.
         val delivered = AtomicBoolean(false)
         fun succeed(unlocked: Cipher) { if (delivered.compareAndSet(false, true)) onSuccess(unlocked) }
         fun fail(message: String) { if (delivered.compareAndSet(false, true)) onError(message) }
@@ -89,9 +98,12 @@ class BiometricAuthManager(private val context: Context) {
             .setTitle(title)
             .setSubtitle(subtitle)
             .setConfirmationRequired(false)
-            // BIOMETRIC_STRONG without DEVICE_CREDENTIAL, so a negative button is mandatory.
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-            .setNegativeButton("Cancel", executor) { _, _ -> fail("Cancelled") }
+            // No negative button, and that is required rather than a choice: the platform
+            // refuses to build a prompt that has both a negative button and DEVICE_CREDENTIAL,
+            // because the credential fallback IS the second button. Cancelling now arrives
+            // through onAuthenticationError as ERROR_USER_CANCELED / ERROR_NEGATIVE_BUTTON,
+            // which fail() already handles.
+            .setAllowedAuthenticators(ALLOWED)
             .build()
 
         val cancellation = CancellationSignal()
@@ -113,5 +125,15 @@ class BiometricAuthManager(private val context: Context) {
             },
         )
         return cancellation
+    }
+
+    private companion object {
+        /**
+         * What the prompt offers, and what the Keystore key is bound to in [AppLockKeystore].
+         * The two must agree: a prompt that accepts something the key does not would succeed and
+         * then hand back a cipher the OS refuses to let you use.
+         */
+        val ALLOWED = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
     }
 }

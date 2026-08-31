@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jegly.files.data.AppSettings
 import com.jegly.files.security.AppLockKeystore
+import com.jegly.files.security.AppLockSession
 import com.jegly.files.security.BiometricAuthManager
 
 /**
@@ -50,22 +51,53 @@ fun LockGate(content: @Composable () -> Unit) {
     val biometrics = remember { BiometricAuthManager(context) }
 
     val blob by settings.lockBlob.collectAsStateWithLifecycle()
-    var unlocked by remember { mutableStateOf(false) }
+    // Held in AppLockSession, not here: every Activity composes its own LockGate, and a local
+    // flag made each one demand its own fingerprint — so "Copy to…", which is just a second
+    // Activity of this same app, cost two prompts for one copy.
+    val unlocked by AppLockSession.unlocked.collectAsStateWithLifecycle()
     var error by remember { mutableStateOf<String?>(null) }
     var prompting by remember { mutableStateOf(false) }
 
-    // A lock that only challenges on cold start is theatre — anyone who finds the phone with the
-    // task still in recents walks straight in. Re-arm whenever the app leaves the foreground.
+    /*
+     * A lock that only challenges on cold start is theatre — anyone who finds the phone with the
+     * task still in recents walks straight in. Re-arm whenever the app leaves the foreground:
+     * AppLockSession counts started screens and re-arms the moment the count reaches zero, so
+     * leaving still locks immediately while a hand-off between our own screens does not.
+     *
+     * `counted` keeps the pair balanced. Adding an observer to an already-started lifecycle
+     * replays ON_START at once, and leaving the composition never delivers the matching ON_STOP,
+     * so an unguarded pair would drift the count upward and the lock would stop re-arming.
+     */
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
+        var counted = false
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                unlocked = false
-                prompting = false
+            when (event) {
+                Lifecycle.Event.ON_START -> if (!counted) {
+                    counted = true
+                    AppLockSession.noteForeground()
+                }
+
+                Lifecycle.Event.ON_STOP -> if (counted) {
+                    counted = false
+                    AppLockSession.noteBackground()
+                    // The system dismisses the prompt when the app goes away, and this flag is
+                    // what stops a second one being raised over the first. Left true, the next
+                    // attempt would be swallowed and the screen would sit there unable to ask.
+                    prompting = false
+                }
+
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            if (counted) {
+                counted = false
+                AppLockSession.noteBackground()
+            }
+        }
     }
 
     if (blob == null || unlocked) {
@@ -88,7 +120,7 @@ fun LockGate(content: @Composable () -> Unit) {
                 onSuccess = { unlockedCipher ->
                     prompting = false
                     if (AppLockKeystore.openSentinel(unlockedCipher, currentBlob)) {
-                        unlocked = true
+                        AppLockSession.markUnlocked()
                         error = null
                     } else {
                         error = "Verification failed"

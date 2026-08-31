@@ -597,7 +597,8 @@ fun PropertiesSheet(properties: Properties, onDismiss: () -> Unit) {
 
 private val MEDIA_KINDS = setOf(FileKind.Image, FileKind.Video, FileKind.Audio)
 
-private fun plural(n: Int, noun: String) = if (n == 1) noun else "${noun}s"
+/** Shared with the operation banner in BrowserScreen, hence not file-private. */
+internal fun plural(n: Int, noun: String) = if (n == 1) noun else "${noun}s"
 
 /** A null [value] means "still being computed" and shows a spinner in its place. */
 @Composable

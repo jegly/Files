@@ -345,6 +345,25 @@ class FileOperationsTest {
         assertFalse(File(temp.root, "escaped.txt").exists())
     }
 
+    // --- secure delete ----------------------------------------------------------
+
+    /**
+     * A symlink names somebody else's data, so it is unlinked and never written through —
+     * overwriting one would destroy the file it points at, which is not the file being deleted.
+     */
+    @Test
+    fun `secure delete unlinks a symlink without touching its target`() {
+        val target = File(temp.root, "target.txt").apply { writeText("must survive") }
+        val link = File(temp.root, "link.txt")
+        java.nio.file.Files.createSymbolicLink(link.toPath(), target.toPath())
+
+        val result = run(OpKind.Delete, listOf(link), null)
+
+        assertEquals(0, result.failures.size)
+        assertFalse(link.exists())
+        assertEquals("must survive", target.readText())
+    }
+
     // --- vault transfers --------------------------------------------------------
 
     private val vaultPassword = "a decent vault password".toCharArray()
@@ -441,6 +460,31 @@ class FileOperationsTest {
 
         assertEquals(1, result.failures.size)
         assertTrue(result.failures.single().reason.contains("locked"))
+    }
+
+    /**
+     * Naming the vault folder as the destination — which is what choosing it in the destination
+     * picker does — has to reach the encrypted tree, not the folder holding the header.
+     *
+     * The regression this pins: importing into the root wrote blobs and an index alongside
+     * vault.jfvault, where nothing that lists the vault ever looks. The copy reported success and
+     * the file was nowhere the user could see it.
+     */
+    @Test
+    fun `copying to a vault root lands in the vault's tree, not beside its header`() {
+        val (dir, root) = newVault("Vault")
+        val source = temp.newFolder("plain").also { it.child("in.txt", "inside") }
+
+        val result = run(OpKind.Copy, listOf(source), dir)
+
+        assertEquals(0, result.failures.size)
+        val key = VaultSession.keyFor(dir)!!
+        assertEquals("plain", Vault.list(root, key).single().name)
+        // Nothing stray next to the header: the tree directory and the header, and that is all.
+        assertEquals(
+            setOf(Vault.HEADER_NAME, root.name),
+            dir.list()!!.toSet(),
+        )
     }
 
     /**
