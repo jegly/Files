@@ -94,6 +94,9 @@ fun SettingsScreen(onBack: () -> Unit) {
     val lockBlob by settings.lockBlob.collectAsStateWithLifecycle()
     val vaultTimeout by settings.vaultLockTimeout.collectAsStateWithLifecycle()
     val advancedProtection by protection.enabled.collectAsStateWithLifecycle()
+    // Reported separately from the boolean above so the row can tell "off" apart from
+    // "this build could not read it" instead of printing "Off" for both.
+    val protectionState by protection.state.collectAsStateWithLifecycle()
 
     var showThemes by remember { mutableStateOf(false) }
     var showFonts by remember { mutableStateOf(false) }
@@ -278,12 +281,9 @@ fun SettingsScreen(onBack: () -> Unit) {
                         headlineContent = { Text("App lock") },
                         supportingContent = {
                             Text(
-                                lockError
-                                    ?: if (lockBlob != null) {
-                                        "Requires your fingerprint, face, or screen lock to open Files"
-                                    } else {
-                                        "Off — anyone with the phone unlocked can browse your storage"
-                                    },
+                                // An error still gets said in full; the steady states are one
+                                // word, because the switch beside them already carries the detail.
+                                lockError ?: if (lockBlob != null) "On" else "Off",
                                 color = if (lockError != null) MaterialTheme.colorScheme.error
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -314,13 +314,20 @@ fun SettingsScreen(onBack: () -> Unit) {
                 item {
                     StatusRow(
                         title = "Advanced Protection",
-                        text = if (advancedProtection) {
-                            "On — the app lock is pinned on and deletes are called out as permanent"
-                        } else {
-                            "Off — this is a device-wide Android setting, not an app one"
+                        text = when (protectionState) {
+                            AdvancedProtectionGate.State.On -> "On"
+                            AdvancedProtectionGate.State.Off -> "Off"
+                            // Kept distinct from "Off" rather than folded into it. Reporting a
+                            // protection mode as off when it was never actually read is the one
+                            // wrong answer here, and it is the bug this row used to have.
+                            AdvancedProtectionGate.State.Unavailable -> "Unavailable"
                         },
                         // Off is not a failure state; it's the default and the app can't change it.
-                        level = if (advancedProtection) StatusLevel.Good else StatusLevel.Neutral,
+                        level = when (protectionState) {
+                            AdvancedProtectionGate.State.On -> StatusLevel.Good
+                            AdvancedProtectionGate.State.Off -> StatusLevel.Neutral
+                            AdvancedProtectionGate.State.Unavailable -> StatusLevel.Neutral
+                        },
                     )
                 }
 

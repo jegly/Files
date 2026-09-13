@@ -3,10 +3,14 @@
      legacy PNG density buckets are needed, because every device that can install this app
      renders adaptive icons.
 
-     monochrome deliberately points at its own drawable rather than reusing the foreground: the
-     foreground is a full-colour cabinet with white and grey faces and six coloured file tabs, all
-     of which flatten into one tone once the system tints it. The monochrome drawable redraws the
-     same cabinet as a wireframe so it survives that. -->
+     The foreground is a raster gradient rather than a vector: it is a smooth three-way blend with
+     no geometry to describe, which is the one case where a PNG loses nothing. It ships in the
+     five density buckets under drawable-*dpi.
+
+     It is deliberately full-bleed — the circle's diameter is the entire 108dp layer, not the 72dp
+     safe zone. The artwork is itself a circle, and the system already masks to one, so insetting
+     it to the safe zone would have shown a small circle floating inside the mask instead of
+     filling it. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_launcher_background" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />

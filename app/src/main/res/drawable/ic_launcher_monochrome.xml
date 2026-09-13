@@ -1,93 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Themed-icon layer: the same cabinet as the foreground, reduced to one flat colour.
-
-  The system throws our colour away and tints the whole shape from the wallpaper palette, so every
-  fill in the foreground has to go — the white body, the grey side faces and the six file colours
-  would all collapse into one tone and the cabinet would come out as a solid lump. What is left is
-  the wireframe: the body, the two pulled-out drawer boxes, and the edges where they meet.
-
-  Two things stay filled, because a tinted layer needs some solid mass to not read as scaffolding:
-  the label card on each drawer front, and three of the six file tabs. Only three, spaced 7.5 apart
-  instead of the foreground's 3.2, because tabs that overlap need colour differences to separate
-  and there are none here — at 7.5 they keep a 1.5 gap and stay countable.
-
-  Strokes run slightly heavier than the foreground (2.6 / 2.2 against 2.4 / 2) since a tint against
-  a tinted ground has less contrast to work with than dark outlines on white.
--->
+<!-- Themed icons are tinted flat by the system, so this layer carries shape and nothing else.
+     The icon is a gradient sphere with no symbol inside it, and a gradient has no silhouette to
+     trace — so the honest monochrome of it is the disc itself. Drawn full-bleed to match the
+     foreground, which means a themed launcher renders a solid tinted circle. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
-    <!-- Cabinet body: silhouette, then the two edges that make it read as a box rather than a
-         hexagon. -->
     <path
-        android:pathData="M39,79 L39,39 L51,31 L73,31 L73,71 L61,79 Z"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.6"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M39,39 L61,39 L73,31"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.6"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M61,39 L61,79"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.6" />
-
-    <!-- Lower drawer -->
-    <path
-        android:pathData="M35.4,62.4 L39,60 L61,60 L57.4,62.4 Z"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.2"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M57.4,62.4 L61,60 L61,73 L57.4,75.4 Z"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.2"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M35.4,62.4 L57.4,62.4 L57.4,75.4 L35.4,75.4 Z"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.2"
-        android:strokeLineJoin="round" />
-
-    <!-- Upper drawer -->
-    <path
-        android:pathData="M33,47 L39,43 L61,43 L55,47 Z"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.2"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M55,47 L61,43 L61,56 L55,60 Z"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.2"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M33,47 L55,47 L55,60 L33,60 Z"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.2"
-        android:strokeLineJoin="round" />
-
-    <!-- Three file tabs, front edge on the near rim, back edge on the far rim -->
-    <path
-        android:pathData="M34,47 L40,43 L40,39 L34,43 Z"
-        android:fillColor="#FFFFFFFF" />
-    <path
-        android:pathData="M41.5,47 L47.5,43 L47.5,39 L41.5,43 Z"
-        android:fillColor="#FFFFFFFF" />
-    <path
-        android:pathData="M49,47 L55,43 L55,39 L49,43 Z"
-        android:fillColor="#FFFFFFFF" />
-
-    <!-- Label card on each drawer front -->
-    <path
-        android:pathData="M36,51.5 L48,51.5 L48,55.5 L36,55.5 Z"
-        android:fillColor="#FFFFFFFF" />
-    <path
-        android:pathData="M38.4,66.9 L50.4,66.9 L50.4,70.9 L38.4,70.9 Z"
-        android:fillColor="#FFFFFFFF" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,0A54,54 0,1 1,54 108A54,54 0,1 1,54 0Z" />
 </vector>

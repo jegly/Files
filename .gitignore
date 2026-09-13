@@ -22,8 +22,14 @@ keystore.properties
 # Internal handoff notes. These track what has and hasn't been run on real hardware, what is
 # still unproven, and what was tried and abandoned — useful while working, not what the project
 # should say for itself in public.
-HANDOFF.md
-notes_excluded_from_push.md
+# No Markdown is published except the README. Notes and handoffs describe intent and
+# in-progress state, and intent drifts from the code faster than anyone updates it — a stale
+# document that contradicts the source is worse than no document. They stay on disk.
+#
+# README.md is the exception because it is not a working note: GitHub renders it as the
+# repository's front page, so dropping it would leave the project with no description at all.
+*.md
+!README.md
 
 # OS noise
 .DS_Store
@@ -52,3 +58,9 @@ app/release/
 
 # Kotlin compiler daemon session files — regenerated on every build.
 .kotlin/
+
+# Icon source art dropped in the repo root while redrawing the launcher icon. The shipped icon
+# is the set of density buckets under app/src/main/res/drawable-*dpi/, generated from this file;
+# tracking the original as well would put a second, diverging copy of the same artwork in the
+# tree. Keep it on disk for the next regeneration, out of the repository.
+newicon.png

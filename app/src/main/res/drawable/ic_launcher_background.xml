@@ -1,22 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Flat aqua ground, taken from the teal disc in the reference artwork.
+<!-- Flat fill sampled from the average of the foreground gradient.
 
-  The reference draws that teal as a circle floating on white, but a circle is the wrong shape to
-  ship here: the launcher applies its own mask, so a square mask would expose white corners and a
-  circular one would double up on the same edge. Filling the whole 108dp with the teal lets every
-  mask cut its own silhouette out of it.
-
-  The cabinet is white and dark-outlined, so this needs to stay a mid-tone — light enough for the
-  outlines to read, saturated enough for the white body to separate from it.
--->
+     Nothing of this is normally visible: the foreground is a full-bleed circle whose diameter is
+     the whole 108dp layer, so it covers every mask the system applies, circle or squircle. It is
+     here because a layer that is only ever fully covered is still the thing that shows if a
+     launcher composites the two differently, and a matching tone fails invisibly where the old
+     transparent default would have flashed. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
     <path
-        android:pathData="M0,0 L108,0 L108,108 L0,108 Z"
-        android:fillColor="#FF6FC2C6" />
+        android:fillColor="#BBD098"
+        android:pathData="M0,0h108v108h-108z" />
 </vector>

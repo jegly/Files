@@ -72,7 +72,6 @@ import com.jegly.files.model.ViewMode
 import com.jegly.files.ops.OpKind
 import com.jegly.files.ops.OpProgress
 import com.jegly.files.ops.Opener
-import com.jegly.files.security.AdvancedProtectionGate
 import com.jegly.files.security.Vault
 import com.jegly.files.security.VaultSession
 import com.jegly.files.vm.BrowserViewModel
@@ -116,8 +115,6 @@ fun BrowserScreen(
     val pastePrompt by vm.pastePrompt.collectAsStateWithLifecycle()
     val passwordPrompt by vm.passwordPrompt.collectAsStateWithLifecycle()
     val vaultPrompt by vm.vaultPrompt.collectAsStateWithLifecycle()
-    val protection = remember { AdvancedProtectionGate.get(context) }
-    val advancedProtection by protection.enabled.collectAsStateWithLifecycle()
     val settings = remember { AppSettings.get(context) }
     val itemScale by settings.itemScale.collectAsStateWithLifecycle()
 
@@ -813,11 +810,7 @@ fun BrowserScreen(
         }
         ConfirmDialog(
             title = "Delete forever?",
-            message = if (advancedProtection) {
-                "$message\n\nAdvanced Protection is enabled on this device."
-            } else {
-                message
-            },
+            message = message,
             confirmLabel = "Delete forever",
             destructive = true,
             onConfirm = { vm.delete(); confirmDelete = false },

@@ -46,6 +46,18 @@
     -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
+    <!--
+      Lets the app read whether the user has turned on Android Advanced Protection, so the
+      security posture can follow the device's. Read-only: the matching setter is a @SystemApi
+      reserved for Settings, so this grants awareness, not control.
+
+      Normal protection level, so declaring it is sufficient; there is no runtime request and no
+      prompt. It was previously left out on the theory that it could never be granted to a
+      third-party app, which left AdvancedProtectionGate catching a SecurityException on every
+      read and reporting "Off" on a device where Advanced Protection was on.
+    -->
+    <uses-permission android:name="android.permission.QUERY_ADVANCED_PROTECTION_MODE" />
+
     <application
         android:name=".FilesApp"
         android:allowBackup="false"
