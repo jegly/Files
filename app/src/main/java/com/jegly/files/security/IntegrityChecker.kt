@@ -6,8 +6,8 @@ import android.content.pm.PackageManager
 import java.security.MessageDigest
 
 /**
- * Compares the running APK's signing certificate against a hardcoded list of acceptable SHA-256
- * digests, to detect that the app has been re-signed (repackaged, modded).
+ * Compares the running APK's current signing certificate against the expected SHA-256 digest, to
+ * detect that the app has been re-signed (repackaged, modded).
  *
  * Catch: trivially defeated by an attacker who can also patch this file, so it's defense-in-depth,
  * not a security boundary. Useful for detecting "casual" tampering by users running modded APKs.
@@ -19,39 +19,30 @@ object IntegrityChecker {
 
     /** What [verifySignature] was actually able to establish. */
     enum class Status {
-        /** A digest was declared and the running APK matches it. */
+        /** The running APK's current signer matches the expected cert. */
         Verified,
 
-        /** A digest was declared and the running APK does not match. Re-signed or repackaged. */
+        /** The running APK's current signer does not match. Re-signed or repackaged. */
         Mismatch,
 
-        /**
-         * No opinion: either this is a debug build, or no digest has been declared to check
-         * against. Deliberately distinct from [Verified] — see the note on [EXPECTED_SHA256].
-         */
+        /** No opinion: this is a debug build, signed per-machine, so there is nothing to pin. */
         NotChecked,
     }
 
-    /**
-     * SHA-256 digests of acceptable signing certs (hex, lowercase, no separators).
-     *
-     * This is the jegly release key, the same one every app in this family is signed with — the
-     * value is identical to the one in `jegly/www`, which is where this file was ported from.
-     * It is *not* a placeholder, and it is not the debug key (`d8ba2d64…`): debug builds are
-     * signed per-machine with `~/.android/debug.keystore` and short-circuit to
-     * [Status.NotChecked] before this set is consulted.
-     *
-     * Releases are signed through Android Studio rather than a Gradle `signingConfig`, so nothing
-     * in this repo pins the key and there is no keystore here to check against. Confirm against
-     * an actual signed APK if this ever comes into question:
-     *
-     *     apksigner verify --print-certs app-release.apk
-     *
-     * Empty would mean [Status.NotChecked], NOT [Status.Verified] — see the enum.
-     */
-    private val EXPECTED_SHA256: Set<String> = setOf(
-        "98d324d4106a368c62729a0a24d9ac9a6b47f8ac4c6585348531f0ee4eb6a04c",
+    // Expected signing-cert SHA-256, stored XOR-masked (never as greppable hex — string literals
+    // survive R8) and compared as raw bytes. P = ML-DSA-87 PQC key (5f99de5b…).
+    // minSdk is 37, and API 37 verifies the APK Signature Scheme v3.2 hybrid block, so the current
+    // signer is always the PQC key. The old jegly key0 (98d324d4…) is deliberately NOT accepted:
+    // an APK re-signed with only key0 would otherwise pass. Confirm against a signed APK with
+    // `apksigner verify --print-certs` ("V3.2 Hybrid PQC Signer").
+    private val K = intArrayOf(0x32, 0xE1, 0xF7, 0xF5, 0xEF, 0x01, 0xDD, 0x9C, 0x16)
+    private val P = intArrayOf(
+        0x6D, 0x78, 0x29, 0xAE, 0xDE, 0x94, 0xA8, 0xA1, 0x59, 0xDA, 0x3C, 0x5C, 0x1E, 0x3D, 0xFA, 0xFA,
+        0xA9, 0x7D, 0x13, 0xE8, 0x21, 0x0E, 0x5D, 0x46, 0xC2, 0x57, 0xAB, 0xC0, 0xFB, 0x69, 0x83, 0x49,
     )
+
+    /** Reconstruct the expected 32-byte cert digest from the masked form (never materialized as hex). */
+    private fun expected(): ByteArray = ByteArray(P.size) { (P[it] xor K[it % K.size]).toByte() }
 
     fun verifySignature(context: Context): Status {
         // Debug builds are signed with ~/.android/debug.keystore (per-machine, per-developer),
@@ -59,27 +50,23 @@ object IntegrityChecker {
         if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             return Status.NotChecked
         }
-        if (EXPECTED_SHA256.isEmpty()) return Status.NotChecked
         // A failure to read our own signing info is treated as a mismatch rather than as unknown:
-        // once a digest has been declared, "couldn't tell" is not a reassuring answer.
-        val actual = runCatching { currentSigningDigests(context) }
+        // "couldn't tell" is not a reassuring answer.
+        val matches = runCatching { currentSignerMatches(context) }
             .getOrElse { return Status.Mismatch }
-        return if (actual.any { it in EXPECTED_SHA256 }) Status.Verified else Status.Mismatch
+        return if (matches) Status.Verified else Status.Mismatch
     }
 
-    private fun currentSigningDigests(context: Context): List<String> {
+    private fun currentSignerMatches(context: Context): Boolean {
         val pm = context.packageManager
         val info = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-        val signers = info.signingInfo ?: return emptyList()
-        val sigs = if (signers.hasMultipleSigners()) {
-            signers.apkContentsSigners
-        } else {
-            signers.signingCertificateHistory
-        }
+        // Current signer only — never signingCertificateHistory, which still contains key0.
+        val signers = info.signingInfo?.apkContentsSigners ?: return false
         val md = MessageDigest.getInstance("SHA-256")
-        return sigs.map { sig ->
+        val want = expected()
+        return signers.any { sig ->
             md.reset()
-            md.digest(sig.toByteArray()).joinToString("") { "%02x".format(it) }
+            md.digest(sig.toByteArray()).contentEquals(want)
         }
     }
 }
