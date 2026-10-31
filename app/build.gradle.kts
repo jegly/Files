@@ -11,8 +11,9 @@ android {
         applicationId = "com.jegly.files"
         minSdk = 37
         targetSdk = 37
-        versionCode = 5
-        versionName = "1.2.2"
+        // CI release builds pass these; local builds use the defaults.
+        versionCode = providers.gradleProperty("appVersionCode").map(String::toInt).getOrElse(5)
+        versionName = providers.gradleProperty("appVersionName").getOrElse("1.2.2")
     }
 
     buildTypes {
