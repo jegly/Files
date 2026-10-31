@@ -48,22 +48,31 @@ JAVA_HOME=/path/to/jdk25 ./gradlew assembleDebug testDebugUnitTest lintDebug
 
 Release APKs use hybrid signing (APK Signature Scheme v3.2): the original app key plus an EC P-384 key and an ML-DSA-87 post-quantum key. Android 17 and newer verify the hybrid block, where the ML-DSA-87 key is the signer; earlier Android versions verify the original key as before. The app's tamper check follows the same rule (minSdk is 37, so it accepts the ML-DSA-87 key).
 
-| File | SHA-256 |
-| --- | --- |
-| `Files-1.2.3-PQC-signed.apk` | `d2ce7e2d78509fec8f67a6c890979883a6786232a66e1eddc92ae5a47ba0b7b6` |
+### Checksums
 
-Verify a download:
+| File | SHA-256 |
+|---|---|
+| `Files-1.2.3-PQC-signed.apk` | *sha256:d2ce7e2d78509fec8f67a6c890979883a6786232a66e1eddc92ae5a47ba0b7b6* |
+
+### Signing certificate
+
+Use this fingerprint with [Obtainium AppVerifier](https://github.com/ImranR98/Obtainium) to verify the APK was signed by the correct key before installing:
+
+**Certificate SHA-256:** `98d324d4106a368c62729a0a24d9ac9a6b47f8ac4c6585348531f0ee4eb6a04c`
+
+On Android 17 and later the APK is also verified through its post-quantum APK Signature Scheme v3.2 hybrid block:
+
+| v3.2 signer | Certificate SHA-256 |
+|---|---|
+| PQC (ML-DSA-87) | `5f99de5b3195753d4fe8ddabebd2fb27356b2109d6fbb2471fcbbdf21a9e76a6` |
+| Hybrid classical (EC P-384) | `fa8f4a07e6a4f2b7dc6e5ab31fc05592b1414ab9436d1e2e39b35ce3bb2e33a2` |
+
+Verify a download (`apksigner` from build-tools 37.0.0 on JDK 25 shows all three keys):
 
 ```bash
 sha256sum Files-1.2.3-PQC-signed.apk
-apksigner verify -v --print-certs Files-1.2.3-PQC-signed.apk   # build-tools 37.0.0 on JDK 25 shows all three keys
+apksigner verify --print-certs Files-1.2.3-PQC-signed.apk | grep SHA-256
 ```
-
-Signing certificate SHA-256:
-
-- ML-DSA-87 (post-quantum): `5f99de5b3195753d4fe8ddabebd2fb27356b2109d6fbb2471fcbbdf21a9e76a6`
-- EC P-384 (hybrid classical): `fa8f4a07e6a4f2b7dc6e5ab31fc05592b1414ab9436d1e2e39b35ce3bb2e33a2`
-- Original key: `98d324d4106a368c62729a0a24d9ac9a6b47f8ac4c6585348531f0ee4eb6a04c`
 
 ## License
 
