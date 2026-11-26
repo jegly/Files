@@ -5,12 +5,18 @@ plugins {
 
 android {
     namespace = "com.jegly.files"
-    compileSdk = 37
+
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
 
     defaultConfig {
         applicationId = "com.jegly.files"
         minSdk = 37
         targetSdk = 37
+
         // CI release builds pass these; local builds use the defaults.
         versionCode = providers.gradleProperty("appVersionCode").map(String::toInt).getOrElse(5)
         versionName = providers.gradleProperty("appVersionName").getOrElse("1.2.2")
